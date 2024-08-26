@@ -1,10 +1,18 @@
 const express = require('express')
+const fs = require('fs');
 const mysql = require('mysql2')
 const app = express()
 const port = 3000
 const bcrypt = require('bcrypt'); // Make sure to include bcrypt
 const jwt = require('jsonwebtoken');
-var secureKey = 'asdkasjsdijas122131ws';
+const secureKey = 'asdkasjsdijas122131ws';
+const https = require('https')
+
+
+const options = {
+    key: fs.readFileSync('./private-key.pem'),
+    cert: fs.readFileSync('./certificate.pem')
+};
 const db = mysql.createConnection(
     {
         host: "localhost",
@@ -16,6 +24,7 @@ const db = mysql.createConnection(
 db.connect()
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
 
 app.post('/product', function (req, res) {
     const { productName, productDetail, price, cost, quantity } =
@@ -227,6 +236,11 @@ app.post('/loginnew', function (req, res) {
 });
 
 
-app.listen(port, function () {
-    console.log(`server listening on port ${port}`)
-})
+// app.listen(port, function () {
+//     console.log(`server listening on port ${port}`)
+// })
+
+//ใช้httpsเพื่อเข้ารหัสกันการดักข้อมูล
+https.createServer(options, app).listen(port, () => {
+    console.log(`Secure server listening on port ${port}`);
+});
