@@ -4,7 +4,7 @@ const app = express()
 const port = 3000
 const bcrypt = require('bcrypt'); // Make sure to include bcrypt
 const jwt = require('jsonwebtoken');
-var secureKey = 'asdkasjsdijas122131ws'; 
+var secureKey = 'asdkasjsdijas122131ws';
 const db = mysql.createConnection(
     {
         host: "localhost",
@@ -90,10 +90,10 @@ app.get('/product/:id',
 //productid new version
 app.get('/product/:id', function (req, res) {
     const productID = req.params.id;
-    
+
     //ป้องกันการ SQL injection
     let sql = "SELECT * FROM product WHERE productID = ?";
-    
+
     db.query(sql, [productID], function (err, result) {
         if (err) {
             console.error(err);
@@ -142,9 +142,8 @@ app.post('/loginnew', function (req, res) {
         });
     }
 
-    //ป้องกันการ SQL injection
     const sql = "SELECT * FROM customer WHERE username = ? AND isActive = 1";
-    
+
     db.query(sql, [username], function (err, result) {
         if (err) {
             console.error('Error logging in:', err);
@@ -177,20 +176,56 @@ app.post('/loginnew', function (req, res) {
             //         });
             //     }
             // });
-            // เพิ่ม token ในการเข้าสู่ระบบในการเช็คยืนยันในส่วนอื่นๆได้
-            const token = jwt.sign({ id: user.customerID }, secureKey, { expiresIn: '2h' });
-            user.token = token;
-            user['message'] = "เข้าสู่ระบบสำเร็จ"
-            user['status'] = true
-            res.send(user)
+
+            // ตรวจสอบว่าบัญชีถูกล็อคอยู่หรือไม่
+            if (user.lockoutTime && new Date(user.lockoutTime) > new Date()) {
+                return res.status(403).send({
+                    message: "บัญชีของคุณถูกล็อค กรุณาลองใหม่ในภายหลัง",
+                    status: false
+                });
+            }
+
+            if (password === user.password) {  
+                // รีเซ็ตค่า
+                const resetAttemptsSql = "UPDATE customer SET loginAttempts = 0, lockoutTime = NULL WHERE customerID = ?";
+                db.query(resetAttemptsSql, [user.customerID]);
+
+                // Generate token
+                const token = jwt.sign({ id: user.customerID }, secureKey, { expiresIn: '2h' });
+                user.token = token;
+                user['message'] = "เข้าสู่ระบบสำเร็จ";
+                user['status'] = true;
+                res.send(user);
+            } else {
+                // เพิ่มจำนวนการเข้าสู่ระบบ
+                const newAttempts = user.loginAttempts + 1;
+                let lockoutTime = null;
+
+                if (newAttempts >= 5) { // ล็อคบัญชีหลังจากพยายามไม่สำเร็จ 5 ครั้ง
+                    lockoutTime = new Date();
+                    lockoutTime.setMinutes(lockoutTime.getMinutes() + 30); // Lock for 30 minutes
+                }
+
+                const updateAttemptsSql = "UPDATE customer SET loginAttempts = ?, lockoutTime = ? WHERE customerID = ?";
+                db.query(updateAttemptsSql, [newAttempts, lockoutTime, user.customerID]);
+
+                res.status(403).send({
+                    message: newAttempts >= 5
+                        ? "บัญชีของคุณถูกล็อคหลังจากความพยายามเข้าสู่ระบบล้มเหลวเกิน 5 ครั้ง กรุณาลองใหม่ในภายหลัง"
+                        : "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+                    status: false
+                });
+            }
+            // });
         } else {
-            res.send({
+            res.status(404).send({
                 message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
                 status: false
             });
         }
     });
 });
+
 
 app.listen(port, function () {
     console.log(`server listening on port ${port}`)
